@@ -1,0 +1,63 @@
+guardian:
+  polling_interval_seconds: 15
+  mode: monitoring # monitoring | remediation
+  log_level: INFO
+  cycle_timeout_seconds: 30
+
+detection:
+  cpu_threshold_percent: 85
+  memory_threshold_percent: 90
+  sustained_duration_seconds: 60
+  restart_window_seconds: 300
+  restart_count_threshold: 3
+  stopped_grace_period_seconds: 30
+  startup_health_grace_seconds: 60
+  memory_growth_intervals: 5
+  collection_failure_threshold: 3
+
+remediation:
+  enabled: false
+  dry_run: true
+  cooldown_seconds: 300
+  max_actions_per_container: 2
+  allowed_actions:
+    - capture_logs
+    - restart
+  restart_allowlist: []
+  protected_containers: []
+  recovery_grace_period_seconds: 20
+
+docker:
+  monitored_containers: []
+  excluded_containers: []
+  socket_url: null
+  api_timeout_seconds: 10
+  log_tail_lines: 50
+
+notifications:
+  console:
+    enabled: true
+  email:
+    enabled: false
+    smtp_host: ""
+    smtp_port: 587
+    use_tls: true
+    from_addr: ""
+    to_addrs: []
+  webhook:
+    enabled: false
+    url: ""
+    timeout_seconds: 5
+  min_severity: low
+  cooldown_seconds: 300
+  max_retries: 3
+  retry_backoff_seconds: 2
+
+persistence:
+  db_path: data/guardian.db
+  retention_days: 30
+
+api:
+  enabled: true
+  host: 127.0.0.1
+  port: 8420
