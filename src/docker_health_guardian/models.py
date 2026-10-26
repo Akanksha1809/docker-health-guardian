@@ -76,6 +76,17 @@ class Severity(StrEnum):
     CRITICAL = "critical"
 
 
+class RuleMatch(BaseModel):
+    """One rule firing for one container during one evaluation cycle."""
+
+    rule_id: str
+    container_name: str
+    container_id: str
+    incident_type: str
+    severity: Severity
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
 class IncidentState(StrEnum):
     DETECTED = "detected"
     INVESTIGATING = "investigating"

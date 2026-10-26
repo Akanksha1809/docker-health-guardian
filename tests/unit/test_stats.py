@@ -62,7 +62,9 @@ class TestComputeMemoryStats:
                 "stats": {"cache": 0},
             }
         }
-        usage, limit, percent, reason = compute_memory_stats(payload, host_total_memory_bytes=8 * GB)
+        usage, limit, percent, reason = compute_memory_stats(
+            payload, host_total_memory_bytes=8 * GB
+        )
         assert reason is None
         assert usage == int(0.5 * GB)
         assert limit == 1 * GB
@@ -99,7 +101,9 @@ class TestComputeMemoryStats:
                 "stats": {},
             }
         }
-        usage, limit, percent, reason = compute_memory_stats(payload, host_total_memory_bytes=8 * GB)
+        usage, limit, percent, reason = compute_memory_stats(
+            payload, host_total_memory_bytes=8 * GB
+        )
         assert limit is None
         assert percent is None
         assert reason == "no explicit memory limit configured"
@@ -107,7 +111,9 @@ class TestComputeMemoryStats:
 
     def test_zero_limit_is_unavailable(self):
         payload = {"memory_stats": {"usage": 100, "limit": 0, "stats": {}}}
-        usage, limit, percent, reason = compute_memory_stats(payload, host_total_memory_bytes=8 * GB)
+        usage, limit, percent, reason = compute_memory_stats(
+            payload, host_total_memory_bytes=8 * GB
+        )
         assert limit is None
         assert percent is None
         assert reason == "no memory limit reported"
