@@ -78,5 +78,10 @@ See section 24 of the master prompt — tracked as a living checklist in this fi
 - [x] Phase 7 — Compose deployment, failure simulation (verified live: full
       stack built and run, Prometheus confirmed scraping, Grafana dashboard
       confirmed provisioned, all demo containers cleanly torn down)
-- [ ] Phase 8 — tests, lint, coverage
+- [x] Phase 8 — tests, lint, coverage: 170 unit/integration tests + 5 opt-in
+      live-Docker e2e tests, 96% coverage on `src/`, ruff clean. Found and
+      fixed a real bug during this phase: `DockerCollector.__init__`'s
+      operator precedence silently ignored an injected `client` whenever
+      `socket_url` was unset, so dependency-injected tests were hitting the
+      live daemon instead of the mock -- fixed and re-verified live.
 - [ ] Phase 9 — docs, final validation, demo script

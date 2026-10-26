@@ -155,3 +155,58 @@ class TestDaemonUnreachable:
         collector = FakeCollector(ping_result=True, list_error=DockerUnavailableError("boom"))
         scheduler = make_scheduler(db, collector)
         scheduler.run_once()  # must not raise
+
+
+class TestRunForever:
+    def test_stops_when_stop_is_called_and_runs_at_least_once(self, db, monkeypatch):
+        collector = FakeCollector(snapshots=[])
+        scheduler = make_scheduler(db, collector)
+        monkeypatch.setattr("docker_health_guardian.scheduler.time.sleep", lambda s: None)
+        monkeypatch.setattr("docker_health_guardian.scheduler.signal.signal", lambda *a: None)
+
+        call_count = {"n": 0}
+        original_run_once = scheduler.run_once
+
+        def counting_run_once():
+            call_count["n"] += 1
+            original_run_once()
+            if call_count["n"] >= 2:
+                scheduler.stop()
+
+        scheduler.run_once = counting_run_once
+        scheduler.run_forever()
+        assert call_count["n"] == 2
+
+    def test_unhandled_exception_in_one_cycle_does_not_crash_the_loop(self, db, monkeypatch):
+        collector = FakeCollector(snapshots=[])
+        scheduler = make_scheduler(db, collector)
+        monkeypatch.setattr("docker_health_guardian.scheduler.time.sleep", lambda s: None)
+        monkeypatch.setattr("docker_health_guardian.scheduler.signal.signal", lambda *a: None)
+
+        call_count = {"n": 0}
+
+        def failing_then_stopping_run_once():
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise RuntimeError("simulated crash")
+            scheduler.stop()
+
+        scheduler.run_once = failing_then_stopping_run_once
+        scheduler.run_forever()  # must not raise
+        assert call_count["n"] == 2
+
+
+class TestBuildScheduler:
+    def test_wires_up_a_working_scheduler_from_config(self, tmp_path, monkeypatch):
+        from docker_health_guardian.config.models import GuardianAppConfig, PersistenceConfig
+        from docker_health_guardian.scheduler import build_scheduler
+
+        monkeypatch.setattr(
+            "docker_health_guardian.scheduler.DockerCollector",
+            lambda cfg: FakeCollector(ping_result=True, snapshots=[]),
+        )
+        config = GuardianAppConfig(
+            persistence=PersistenceConfig(db_path=str(tmp_path / "guardian.db"))
+        )
+        scheduler = build_scheduler(config)
+        scheduler.run_once()  # must not raise -- proves every component is wired correctly

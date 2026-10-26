@@ -51,9 +51,14 @@ class DockerUnavailableError(Exception):
 class DockerCollector:
     def __init__(self, config: DockerConfig, client: docker.DockerClient | None = None) -> None:
         self._config = config
-        self._client = client or docker.DockerClient(
-            base_url=config.socket_url, timeout=config.api_timeout_seconds
-        ) if config.socket_url else docker.from_env(timeout=config.api_timeout_seconds)
+        if client is not None:
+            self._client = client
+        elif config.socket_url:
+            self._client = docker.DockerClient(
+                base_url=config.socket_url, timeout=config.api_timeout_seconds
+            )
+        else:
+            self._client = docker.from_env(timeout=config.api_timeout_seconds)
         self._host_total_memory_bytes: int | None = None
 
     def ping(self) -> bool:
