@@ -118,5 +118,224 @@ def self_check(config: ConfigOption = DEFAULT_CONFIG_PATH) -> None:
     console.print("[bold green]All checks passed.[/bold green]")
 
 
+rules_app = typer.Typer(help="Inspect the detection rule catalog.")
+app.add_typer(rules_app, name="rules")
+
+
+@rules_app.command("list")
+def rules_list(json_output: JsonOption = False) -> None:
+    """List all detection rules with severity, category, and remediation permission."""
+    from docker_health_guardian.detection import RULES
+
+    if json_output:
+        print_json(
+            [
+                {
+                    "rule_id": r.rule_id,
+                    "severity": r.severity.value,
+                    "category": r.category,
+                    "remediation_permitted": r.remediation_permitted,
+                    "cooldown_seconds": r.cooldown_seconds,
+                    "description": r.description,
+                }
+                for r in RULES.values()
+            ]
+        )
+        return
+    rows = [
+        [r.rule_id, r.category, r.severity.value, r.remediation_permitted, r.cooldown_seconds]
+        for r in RULES.values()
+    ]
+    print_table(
+        "Detection Rules",
+        ["Rule ID", "Category", "Severity", "Remediation OK", "Cooldown (s)"],
+        rows,
+    )
+
+
+@rules_app.command("validate")
+def rules_validate(config: ConfigOption = DEFAULT_CONFIG_PATH) -> None:
+    """Validate that detection thresholds in the config are internally consistent."""
+    try:
+        load_config(config)
+    except ConfigError as exc:
+        error_console.print(str(exc))
+        raise typer.Exit(code=2) from exc
+    console.print("[green]All detection rules and thresholds are valid.[/green]")
+
+
+incidents_app = typer.Typer(help="Inspect incidents.")
+app.add_typer(incidents_app, name="incidents")
+
+
+def _open_db(config_path: str):
+    from docker_health_guardian.persistence import Database
+
+    cfg = load_config(config_path)
+    db = Database(cfg.persistence.db_path)
+    db.initialize()
+    return db, cfg
+
+
+@incidents_app.command("list")
+def incidents_list(
+    config: ConfigOption = DEFAULT_CONFIG_PATH,
+    state: Annotated[str | None, typer.Option(help="Filter by lifecycle state")] = None,
+    severity: Annotated[str | None, typer.Option(help="Filter by severity")] = None,
+    limit: Annotated[int, typer.Option(help="Max rows to return")] = 50,
+    json_output: JsonOption = False,
+) -> None:
+    db, _ = _open_db(config)
+    incidents = db.list_incidents(state=state, severity=severity, limit=limit)
+    if json_output:
+        print_json([i.model_dump(mode="json") for i in incidents])
+        return
+    rows = [
+        [
+            i.incident_id[:8],
+            i.container_name,
+            i.rule_id,
+            i.severity.value,
+            i.state.value,
+            i.last_seen,
+        ]
+        for i in incidents
+    ]
+    print_table("Incidents", ["ID", "Container", "Rule", "Severity", "State", "Last Seen"], rows)
+
+
+@app.command("incident")
+def incident_show(
+    incident_id: str, config: ConfigOption = DEFAULT_CONFIG_PATH, json_output: JsonOption = False
+) -> None:
+    """Show full detail for one incident, including its event timeline."""
+    db, _ = _open_db(config)
+    incident = db.get_incident(incident_id)
+    if incident is None:
+        error_console.print(f"No incident found with id {incident_id}")
+        raise typer.Exit(code=1)
+    events = db.list_events(incident.incident_id)
+    attempts = db.list_remediation_attempts(incident_id=incident.incident_id)
+    if json_output:
+        print_json(
+            {
+                "incident": incident.model_dump(mode="json"),
+                "events": [e.model_dump(mode="json") for e in events],
+                "remediation_attempts": [a.model_dump(mode="json") for a in attempts],
+            }
+        )
+        return
+    console.print(f"[bold]{incident.incident_id}[/bold] -- {incident.container_name}")
+    console.print(
+        f"rule={incident.rule_id} severity={incident.severity.value} "
+        f"state={incident.state.value}"
+    )
+    console.print(f"first_seen={incident.first_seen} last_seen={incident.last_seen}")
+    if incident.diagnosis:
+        console.print(f"[bold]diagnosis:[/bold] {incident.diagnosis.likely_cause} "
+                      f"(confidence={incident.diagnosis.confidence.value})")
+        console.print(f"recommended: {incident.diagnosis.recommended_action}")
+    print_table(
+        "Events", ["Time", "Kind", "Detail"], [[e.timestamp, e.kind, e.detail] for e in events]
+    )
+    if attempts:
+        print_table(
+            "Remediation Attempts",
+            ["Started", "Action", "Dry Run", "Outcome", "Recovery Verified"],
+            [
+                [a.started_at, a.action, a.dry_run, a.outcome.value, a.recovery_verified]
+                for a in attempts
+            ],
+        )
+
+
+remediation_app = typer.Typer(help="Inspect and control remediation.")
+app.add_typer(remediation_app, name="remediation")
+
+
+@remediation_app.command("history")
+def remediation_history(
+    config: ConfigOption = DEFAULT_CONFIG_PATH,
+    container: Annotated[str | None, typer.Option(help="Filter by container name")] = None,
+    limit: Annotated[int, typer.Option(help="Max rows to return")] = 50,
+    json_output: JsonOption = False,
+) -> None:
+    db, _ = _open_db(config)
+    attempts = db.list_remediation_attempts(container_name=container, limit=limit)
+    if json_output:
+        print_json([a.model_dump(mode="json") for a in attempts])
+        return
+    rows = [
+        [a.started_at, a.container_name, a.action, a.dry_run, a.outcome.value, a.recovery_verified]
+        for a in attempts
+    ]
+    print_table(
+        "Remediation History",
+        ["Started", "Container", "Action", "Dry Run", "Outcome", "Recovery Verified"],
+        rows,
+    )
+
+
+@remediation_app.command("dry-run")
+def remediation_dry_run(container: str, config: ConfigOption = DEFAULT_CONFIG_PATH) -> None:
+    """Show whether `container` is currently eligible for automated restart, without acting."""
+    from docker_health_guardian.remediation import RemediationEngine
+
+    db, cfg = _open_db(config)
+    engine = RemediationEngine(db)
+    from docker_health_guardian.models import Incident, Severity
+
+    probe = Incident(
+        container_name=container,
+        container_id=container,
+        rule_id="health_unhealthy",
+        incident_type="health_unhealthy",
+        severity=Severity.HIGH,
+    )
+    eligible, reason = engine.check_eligibility(probe, cfg.remediation)
+    status = "[green]ELIGIBLE[/green]" if eligible else "[red]NOT ELIGIBLE[/red]"
+    console.print(f"{container}: {status}")
+    console.print(f"reason: {reason}")
+    console.print(f"remediation.dry_run={cfg.remediation.dry_run} (even if eligible, no restart "
+                  "will execute while dry_run is true)")
+
+
+@remediation_app.command("enable")
+def remediation_enable(container: str, config: ConfigOption = DEFAULT_CONFIG_PATH) -> None:
+    """Explicitly allow restart remediation for `container`, overriding the static allowlist."""
+    db, _ = _open_db(config)
+    db.set_container_override(container, enabled=True)
+    console.print(f"[green]Remediation enabled for '{container}'.[/green] "
+                  "(protected_containers, if set, still takes precedence)")
+
+
+@remediation_app.command("disable")
+def remediation_disable(container: str, config: ConfigOption = DEFAULT_CONFIG_PATH) -> None:
+    """Explicitly forbid restart remediation for `container`, regardless of the allowlist."""
+    db, _ = _open_db(config)
+    db.set_container_override(container, enabled=False)
+    console.print(f"[yellow]Remediation disabled for '{container}'.[/yellow]")
+
+
+@app.command()
+def report(
+    config: ConfigOption = DEFAULT_CONFIG_PATH,
+    output_format: Annotated[str, typer.Option("--format", help="json|csv|html")] = "json",
+    output_path: Annotated[str | None, typer.Option("--output", "-o", help="File to write")] = None,
+) -> None:
+    """Generate an incident/remediation report (JSON, CSV, or an HTML summary)."""
+    from docker_health_guardian.reporting import generate_report
+
+    db, _ = _open_db(config)
+    content = generate_report(db, output_format)
+    if output_path:
+        from pathlib import Path
+
+        Path(output_path).write_text(content)
+        console.print(f"[green]Report written to {output_path}[/green]")
+    else:
+        console.print(content)
+
+
 if __name__ == "__main__":
     app()

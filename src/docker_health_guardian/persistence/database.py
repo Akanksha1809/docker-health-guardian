@@ -90,6 +90,16 @@ CREATE TABLE IF NOT EXISTS notifications (
     attempted_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_incident ON notifications(incident_id);
+
+-- An explicit per-container override set via `guardian remediation enable/disable`.
+-- NULL/absent means "use the static restart_allowlist from guardian.yaml".
+-- This can only ever make a container MORE restricted or explicitly eligible
+-- within the allowlist model -- it never bypasses protected_containers.
+CREATE TABLE IF NOT EXISTS container_overrides (
+    container_name TEXT PRIMARY KEY,
+    remediation_enabled INTEGER NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 _MIGRATIONS: list[str] = [_SCHEMA_V1]
@@ -432,6 +442,42 @@ class Database:
                 )
                 for r in rows
             ]
+
+    # -- per-container remediation overrides -------------------------------
+
+    def set_container_override(self, container_name: str, enabled: bool) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO container_overrides (container_name, remediation_enabled, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(container_name) DO UPDATE SET
+                    remediation_enabled=excluded.remediation_enabled,
+                    updated_at=excluded.updated_at
+                """,
+                (container_name, int(enabled), datetime.now(UTC).isoformat()),
+            )
+
+    def clear_container_override(self, container_name: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM container_overrides WHERE container_name = ?", (container_name,)
+            )
+
+    def get_container_override(self, container_name: str) -> bool | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT remediation_enabled FROM container_overrides WHERE container_name = ?",
+                (container_name,),
+            ).fetchone()
+            return None if row is None else bool(row["remediation_enabled"])
+
+    def list_container_overrides(self) -> dict[str, bool]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT container_name, remediation_enabled FROM container_overrides"
+            ).fetchall()
+            return {r["container_name"]: bool(r["remediation_enabled"]) for r in rows}
 
     # -- retention --------------------------------------------------------
 
