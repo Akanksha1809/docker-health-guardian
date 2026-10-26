@@ -1,0 +1,85 @@
+# Overrides for running Guardian inside Docker Compose (see deploy/docker-compose.yml).
+#
+# api.host differs from config/guardian.yaml's 127.0.0.1 default on purpose:
+# inside a container, "127.0.0.1" is the container's own loopback and is
+# unreachable from both the host's published port AND from other containers
+# on the same Compose network (including Prometheus, which scrapes this API
+# over the internal network). 0.0.0.0 here is safe specifically because the
+# actual access boundary in this deployment is Docker's own port publishing
+# in docker-compose.yml -- remove the `ports: ["8420:8420"]` line there if
+# you want the API reachable only from other containers on the Compose
+# network, not from the host at all. See docs/SECURITY.md.
+
+guardian:
+  polling_interval_seconds: 15
+  mode: monitoring
+  log_level: INFO
+  cycle_timeout_seconds: 30
+
+detection:
+  cpu_threshold_percent: 85
+  memory_threshold_percent: 90
+  sustained_duration_seconds: 60
+  restart_window_seconds: 300
+  restart_count_threshold: 3
+  stopped_grace_period_seconds: 30
+  startup_health_grace_seconds: 60
+  memory_growth_intervals: 5
+  collection_failure_threshold: 3
+
+remediation:
+  enabled: false
+  dry_run: true
+  cooldown_seconds: 300
+  max_actions_per_container: 2
+  allowed_actions:
+    - capture_logs
+    - restart
+  restart_allowlist: []
+  protected_containers: []
+  recovery_grace_period_seconds: 20
+
+docker:
+  # Scoped to only this Compose project's own containers. An empty list
+  # would monitor every container the Docker socket can see, including
+  # anything else already running on the host -- fine for a real
+  # deployment, but not what a demo/portfolio stack should do by default.
+  monitored_containers:
+    - guardian-demo-service
+    - guardian-demo-healthy
+    - guardian-demo-unhealthy
+    - guardian-demo-crashloop
+    - guardian-demo-cpu-stress
+    - guardian-demo-memory-growth
+  excluded_containers: []
+  socket_url: null
+  api_timeout_seconds: 10
+  log_tail_lines: 50
+
+notifications:
+  console:
+    enabled: true
+  email:
+    enabled: false
+    smtp_host: ""
+    smtp_port: 587
+    use_tls: true
+    from_addr: ""
+    to_addrs: []
+  webhook:
+    enabled: false
+    url: ""
+    timeout_seconds: 5
+  min_severity: low
+  cooldown_seconds: 300
+  max_retries: 3
+  retry_backoff_seconds: 2
+
+persistence:
+  db_path: data/guardian.db
+  retention_days: 30
+
+api:
+  enabled: true
+  host: 0.0.0.0
+  port: 8420

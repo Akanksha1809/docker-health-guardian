@@ -247,6 +247,20 @@ class Database:
             ).fetchall()
             return [self._row_to_incident(r) for r in rows]
 
+    def count_open_incidents(self) -> int:
+        open_states = [
+            s.value
+            for s in IncidentState
+            if s not in (IncidentState.RESOLVED, IncidentState.SUPPRESSED)
+        ]
+        placeholders = ",".join("?" for _ in open_states)
+        with self._connect() as conn:
+            row = conn.execute(
+                f"SELECT COUNT(*) FROM incidents WHERE state IN ({placeholders})",
+                open_states,
+            ).fetchone()
+            return row[0]
+
     def count_incidents(
         self, state: str | None = None, severity: str | None = None
     ) -> int:

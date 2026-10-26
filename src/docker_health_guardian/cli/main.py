@@ -79,6 +79,68 @@ def config_validate(config: ConfigOption = DEFAULT_CONFIG_PATH) -> None:
     )
 
 
+@app.command()
+def start(config: ConfigOption = DEFAULT_CONFIG_PATH) -> None:
+    """Run the monitoring loop (and, if enabled, the read-only API) in the foreground."""
+    import logging
+    import threading
+
+    from docker_health_guardian.scheduler import build_scheduler
+
+    try:
+        cfg = load_config(config)
+    except ConfigError as exc:
+        error_console.print(str(exc))
+        raise typer.Exit(code=2) from exc
+
+    logging.basicConfig(level=cfg.guardian.log_level)
+    scheduler = build_scheduler(cfg)
+
+    api_thread = None
+    api_server = None
+    if cfg.api.enabled:
+        import uvicorn
+
+        from docker_health_guardian.api.app import app as fastapi_app
+        from docker_health_guardian.api.app import configure as configure_api
+
+        configure_api(config)
+        uvicorn_config = uvicorn.Config(
+            fastapi_app, host=cfg.api.host, port=cfg.api.port, log_level="warning"
+        )
+        api_server = uvicorn.Server(uvicorn_config)
+        api_thread = threading.Thread(target=api_server.run, daemon=True)
+        api_thread.start()
+        console.print(f"[green]API listening on http://{cfg.api.host}:{cfg.api.port}[/green]")
+
+    try:
+        scheduler.run_forever()
+    finally:
+        if api_server is not None:
+            api_server.should_exit = True
+        if api_thread is not None:
+            api_thread.join(timeout=5)
+
+
+@app.command("status")
+def status(config: ConfigOption = DEFAULT_CONFIG_PATH) -> None:
+    """One-shot snapshot: open incidents, remediation mode, container counts."""
+    from docker_health_guardian.collector import DockerCollector, DockerUnavailableError
+
+    db, cfg = _open_db(config)
+    console.print(
+        f"mode={cfg.guardian.mode} remediation.enabled={cfg.remediation.enabled} "
+        f"dry_run={cfg.remediation.dry_run}"
+    )
+    console.print(f"open incidents: {db.count_open_incidents()}")
+    try:
+        collector = DockerCollector(cfg.docker)
+        snapshots = collector.list_container_snapshots()
+        console.print(f"containers observed: {len(snapshots)}")
+    except DockerUnavailableError as exc:
+        error_console.print(f"Docker daemon unreachable: {exc}")
+
+
 @app.command("self-check", help="Run startup diagnostics: config, Docker daemon, persistence.")
 def self_check(config: ConfigOption = DEFAULT_CONFIG_PATH) -> None:
     from docker_health_guardian.collector import DockerCollector

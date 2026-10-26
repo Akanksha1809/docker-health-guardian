@@ -70,11 +70,13 @@ See section 24 of the master prompt — tracked as a living checklist in this fi
 ### Phase checklist
 
 - [x] Phase 1 — environment inspection, plan
-- [ ] Phase 2 — skeleton, config, collector, CLI
-- [ ] Phase 3 — detection, diagnosis, incidents, persistence
-- [ ] Phase 4 — remediation, recovery verification
-- [ ] Phase 5 — notifications, reporting, API
-- [ ] Phase 6 — Prometheus/Grafana
-- [ ] Phase 7 — Compose deployment, failure simulation
+- [x] Phase 2 — skeleton, config, collector, CLI
+- [x] Phase 3 — detection, diagnosis, incidents, persistence
+- [x] Phase 4 — remediation, recovery verification
+- [x] Phase 5 — notifications, reporting, API
+- [x] Phase 6 — Prometheus/Grafana
+- [x] Phase 7 — Compose deployment, failure simulation (verified live: full
+      stack built and run, Prometheus confirmed scraping, Grafana dashboard
+      confirmed provisioned, all demo containers cleanly torn down)
 - [ ] Phase 8 — tests, lint, coverage
 - [ ] Phase 9 — docs, final validation, demo script

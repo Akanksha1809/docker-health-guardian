@@ -1,0 +1,114 @@
+name: guardian-demo
+
+services:
+  guardian:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        # Must match the GID that owns the Docker socket as seen *inside* a
+        # Linux container on this host -- NOT the host's own `stat` output on
+        # macOS, which reports the bind-mount source, not the VM-side owner.
+        # Detect it with: `make detect-docker-gid` (see Makefile), or:
+        #   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+        #     busybox stat -c '%g' /var/run/docker.sock
+        DOCKER_GID: ${DOCKER_GID:-999}
+    image: docker-health-guardian:local
+    container_name: guardian-demo-service
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../config/guardian.docker.yaml:/app/config/guardian.yaml:ro
+      - guardian-data:/app/data
+    env_file:
+      - path: ../.env
+        required: false
+    ports:
+      - "8420:8420"
+    restart: unless-stopped
+
+  # -- Sample workloads for the failure-simulation toolkit (docs/FAILURE_SCENARIOS.md) --
+  # All demo containers are prefixed `guardian-demo-` and labeled so Guardian's
+  # own tooling, and anyone reading `docker ps`, can tell at a glance these are
+  # disposable fixtures -- never real containers.
+
+  demo-healthy:
+    image: busybox:1.36
+    container_name: guardian-demo-healthy
+    command: ["sh", "-c", "while true; do sleep 1; done"]
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 5s
+      timeout: 2s
+      retries: 2
+      start_period: 2s
+    labels:
+      guardian.demo: "true"
+
+  demo-unhealthy:
+    image: busybox:1.36
+    container_name: guardian-demo-unhealthy
+    command: ["sh", "-c", "while true; do sleep 1; done"]
+    healthcheck:
+      test: ["CMD", "sh", "-c", "exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 2
+      start_period: 1s
+    labels:
+      guardian.demo: "true"
+
+  demo-crashloop:
+    image: busybox:1.36
+    container_name: guardian-demo-crashloop
+    command: ["sh", "-c", "exit 1"]
+    restart: always
+    labels:
+      guardian.demo: "true"
+
+  demo-cpu-stress:
+    image: busybox:1.36
+    container_name: guardian-demo-cpu-stress
+    command: ["sh", "-c", "while true; do :; done"]
+    labels:
+      guardian.demo: "true"
+
+  demo-memory-growth:
+    image: busybox:1.36
+    container_name: guardian-demo-memory-growth
+    command: >
+      sh -c "i=0; while true; do dd if=/dev/zero of=/dev/shm/block$$i bs=1M count=10
+      2>/dev/null; i=$$((i+1)); sleep 5; done"
+    tmpfs:
+      - /dev/shm:size=512m
+    mem_limit: 256m
+    labels:
+      guardian.demo: "true"
+
+  # -- Optional observability stack (docker-compose --profile observability up) --
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: guardian-demo-prometheus
+    profiles: ["observability"]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: guardian-demo-grafana
+    profiles: ["observability"]
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+    volumes:
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  guardian-data:
