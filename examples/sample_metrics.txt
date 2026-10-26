@@ -1,0 +1,19 @@
+# Captured live from `curl http://localhost:8420/metrics` against the
+# guardian-demo stack during this project's own development session (real
+# output, not fabricated -- see docs/IMPLEMENTATION_PLAN.md). Histogram
+# bucket lines trimmed for brevity; full output is standard Prometheus
+# text format.
+
+guardian_monitored_containers 6.0
+guardian_containers_by_state{state="running"} 4.0
+guardian_containers_by_state{state="restarting"} 1.0
+guardian_containers_by_state{state="exited"} 1.0
+guardian_open_incidents 5.0
+guardian_incidents_by_severity{severity="low"} 1.0
+guardian_incidents_by_severity{severity="medium"} 1.0
+guardian_incidents_by_severity{severity="high"} 2.0
+guardian_incidents_by_severity{severity="critical"} 1.0
+guardian_remediation_attempts_total{outcome="denied"} 25.0
+guardian_collection_errors_total 1.0
+guardian_cycle_duration_seconds_count 10.0
+guardian_cycle_duration_seconds_sum 80.20324326300761

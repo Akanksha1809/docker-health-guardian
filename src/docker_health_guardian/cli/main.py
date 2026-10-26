@@ -399,5 +399,21 @@ def report(
         console.print(content)
 
 
+@app.command("cleanup")
+def cleanup(config: ConfigOption = DEFAULT_CONFIG_PATH) -> None:
+    """Delete RESOLVED/SUPPRESSED incidents older than persistence.retention_days.
+
+    Open incidents are never touched regardless of age. Intended to be run
+    periodically (e.g. via cron or a scheduled CI job) -- it is not run
+    automatically by `guardian start`.
+    """
+    db, cfg = _open_db(config)
+    removed = db.cleanup_retention(cfg.persistence.retention_days)
+    console.print(
+        f"[green]Removed {removed} incident(s) older than "
+        f"{cfg.persistence.retention_days} days.[/green]"
+    )
+
+
 if __name__ == "__main__":
     app()

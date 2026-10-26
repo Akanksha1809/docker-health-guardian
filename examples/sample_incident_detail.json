@@ -1,0 +1,38 @@
+{
+  "_note": "Captured live via GET /api/v1/incidents/{id} against the guardian-demo stack during this project's own development session. Real output, not fabricated -- see docs/IMPLEMENTATION_PLAN.md.",
+  "incident": {
+    "incident_id": "16f863a5-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "container_name": "guardian-demo-unhealthy",
+    "container_id": "405acc146a32ebbf54a7d9597898be953e6e55d1a235b5fbcbe5c35e77650f23",
+    "rule_id": "health_unhealthy",
+    "incident_type": "health_unhealthy",
+    "severity": "high",
+    "state": "investigating",
+    "first_seen": "2026-10-26T15:20:09.285971Z",
+    "last_seen": "2026-10-26T15:28:13.347000Z",
+    "resolved_at": null,
+    "observed_metrics": { "health_status": "unhealthy" },
+    "diagnosis": {
+      "likely_cause": "Application-level health check is failing inside the container",
+      "confidence": "high",
+      "evidence": ["Docker health status reported as 'unhealthy'"],
+      "alternative_explanations": [
+        "Health check command itself is misconfigured or has a too-short timeout",
+        "A dependency the health check calls (DB, cache, upstream API) is down"
+      ],
+      "recommended_action": "Inspect recent container logs; restart if the app is known to recover cleanly, otherwise escalate",
+      "safe_to_automate": true
+    },
+    "notified": false,
+    "occurrence_count": 21
+  },
+  "remediation_attempts": [
+    {
+      "action": "restart",
+      "dry_run": true,
+      "reason": "remediation is disabled (monitoring-only mode)",
+      "outcome": "denied",
+      "recovery_verified": null
+    }
+  ]
+}

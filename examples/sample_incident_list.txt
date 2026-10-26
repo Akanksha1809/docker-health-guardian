@@ -1,0 +1,24 @@
+# Captured live from `curl http://localhost:8420/api/v1/incidents` against
+# the `deploy/docker-compose.yml` demo stack during this project's own
+# development session (see docs/IMPLEMENTATION_PLAN.md). Real output, not
+# fabricated -- container | rule_id | severity | state:
+
+guardian-demo-crashloop     | restart_loop            | critical | investigating
+guardian-demo-memory-growth | unexpected_stop         | high     | investigating
+guardian-demo-cpu-stress    | cpu_sustained_high      | medium   | investigating
+guardian-demo-unhealthy     | health_unhealthy        | high     | investigating
+guardian-demo-service       | memory_growth           | low      | investigating
+guardian-demo-memory-growth | memory_sustained_high   | high     | resolved
+
+# Notes on what actually happened here:
+# - demo-crashloop exits immediately and Docker's own `restart: always`
+#   policy kept restarting it -- Guardian correctly detected the loop and
+#   marked it NOT safe to automate (see docs/REMEDIATION_POLICIES.md).
+# - demo-memory-growth hit its 256m mem_limit, got OOM-killed (nonzero
+#   exit), which is why both memory_sustained_high (now resolved, since the
+#   kill freed memory) and unexpected_stop (from the kill itself) appear for
+#   the same container -- a real example of two independent rules
+#   correctly firing from one underlying event.
+# - guardian-demo-service (Guardian monitoring itself) shows a low-severity
+#   memory_growth -- plausible normal process warm-up, correctly kept at
+#   low severity and not remediation-eligible.

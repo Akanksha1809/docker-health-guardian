@@ -84,4 +84,7 @@ See section 24 of the master prompt — tracked as a living checklist in this fi
       operator precedence silently ignored an injected `client` whenever
       `socket_url` was unset, so dependency-injected tests were hitting the
       live daemon instead of the mock -- fixed and re-verified live.
-- [ ] Phase 9 — docs, final validation, demo script
+- [x] Phase 9 — docs (README, ARCHITECTURE, SETUP, CONFIGURATION, SECURITY,
+      REMEDIATION_POLICIES, API, TROUBLESHOOTING, FAILURE_SCENARIOS,
+      INTERVIEW_GUIDE), LICENSE, CONTRIBUTING, `scripts/demo.sh`, real
+      captured sample outputs in `examples/`, final full-suite validation
