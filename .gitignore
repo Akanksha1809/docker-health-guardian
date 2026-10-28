@@ -17,3 +17,9 @@ reports/
 .env
 *.log
 .DS_Store
+
+# Demo recording binaries are hosted as GitHub Release assets (see README's
+# Demo section), not committed -- pushing them inline previously tripped
+# GitHub's HTTP transport on this project's network path. Kept locally for
+# `gh release create`/`gh release upload`.
+/assets/

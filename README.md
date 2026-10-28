@@ -10,6 +10,22 @@ Monitoring-only by default. Dry-run by default. Nothing is ever restarted
 without an explicit allowlist. Every decision, denial, and attempt is
 logged and queryable.
 
+## Demo
+
+![Docker Health Guardian live demo](https://github.com/Akanksha1809/docker-health-guardian/releases/download/demo-v1/demo.gif)
+
+A real, unedited recording of `scripts/demo.sh`: building and starting the
+service alongside six disposable sample workloads (healthy, unhealthy,
+crash-looping, CPU-stressed, memory-growing), the resulting incidents with
+diagnoses, a remediation dry-run showing the monitoring-only default,
+Prometheus metrics, and a clean teardown. Long idle waits (container
+startup, the sustained-breach detection windows) are time-compressed for
+watchability; nothing shown is staged or fabricated. The raw asciinema
+recording is attached to the same
+[release](https://github.com/Akanksha1809/docker-health-guardian/releases/tag/demo-v1)
+as `demo.cast` (`asciinema play demo.cast` to replay it at its own pace),
+or run `bash scripts/demo.sh` yourself to reproduce it live.
+
 ## Problem statement
 
 "Is my container okay?" sounds simple until you need to answer it
