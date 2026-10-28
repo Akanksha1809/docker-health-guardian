@@ -22,4 +22,8 @@ def print_table(title: str, columns: list[str], rows: list[list[Any]]) -> None:
 
 
 def print_json(data: Any) -> None:
-    console.print(json.dumps(data, indent=2, default=str))
+    # Deliberately bypasses the Rich console: it word-wraps long lines to
+    # the terminal width, which can inject literal newlines into the
+    # middle of a JSON string value and corrupt otherwise-valid JSON.
+    # Machine-readable output must never be reflowed.
+    print(json.dumps(data, indent=2, default=str))

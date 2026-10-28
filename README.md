@@ -276,9 +276,11 @@ make lint
 ```
 
 **Actual results from this project's own development** (see
-`docs/IMPLEMENTATION_PLAN.md` for the full phase-by-phase log): 170
-unit/integration tests passing, 96% coverage on `src/`, ruff clean, plus 5
-e2e tests passing against a live Colima Docker daemon.
+`docs/IMPLEMENTATION_PLAN.md` for the full phase-by-phase log): 209
+unit/integration tests passing (including a full CLI suite covering exit
+codes and output for every command via Typer's `CliRunner`), 97% coverage
+on `src/` -- `cli/` and `api/` included, not excluded from the number --
+ruff clean, plus 5 e2e tests passing against a live Colima Docker daemon.
 
 ## Troubleshooting
 

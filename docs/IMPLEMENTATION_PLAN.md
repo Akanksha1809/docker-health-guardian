@@ -88,3 +88,23 @@ See section 24 of the master prompt — tracked as a living checklist in this fi
       REMEDIATION_POLICIES, API, TROUBLESHOOTING, FAILURE_SCENARIOS,
       INTERVIEW_GUIDE), LICENSE, CONTRIBUTING, `scripts/demo.sh`, real
       captured sample outputs in `examples/`, final full-suite validation
+- [x] Phase 10 (post-delivery) — pushed to a public GitHub repo (the demo
+      GIF/cast are hosted as a GitHub Release asset, not a git blob, after
+      repeated `HTTP 408`/"unexpected disconnect" failures on normal pushes
+      from two different machines -- see the Troubleshooting doc and the
+      release at `releases/tag/demo-v1`); closed the CLI test-coverage gap
+      with a 38-test `tests/integration/test_cli.py` suite covering exit
+      codes and output for every command via Typer's `CliRunner`. Found and
+      fixed two more real bugs along the way:
+      1. `print_json()` was piping JSON through Rich's word-wrapping
+         console, which could inject literal newlines into long string
+         values and corrupt the output as JSON -- fixed by printing
+         machine-readable output with plain `print()`, never through Rich.
+      2. `scheduler.py` imports `DockerCollector` via `from ... import
+         DockerCollector` at module load time, so patching
+         `collector.DockerCollector` for a test doesn't reach code that
+         goes through `build_scheduler()` -- the first version of the
+         `start` command's tests silently fell through to the real Docker
+         daemon (22s per test) instead of the fake; fixed by patching both
+         bindings. 209 tests passing, 97% coverage on `src/` with `cli/`
+         and `api/` no longer excluded from the number.

@@ -48,4 +48,3 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.coverage.run]
 source = ["src/docker_health_guardian"]
-omit = ["*/cli/*", "*/api/*"]

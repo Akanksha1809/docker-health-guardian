@@ -94,3 +94,19 @@ SQLite on every scrape, so they're always current.
 This was a one-off transient registry issue encountered once in this
 project's own development session, unrelated to Guardian itself -- retrying
 `docker pull busybox:1.36` resolved it immediately.
+
+## `git push` fails with `HTTP 408` / "unexpected disconnect while reading sideband packet"
+
+Encountered while first publishing this repo: a normal `git push` carrying
+the demo GIF/cast (under 1.2MB total) consistently failed this way from two
+different machines/networks, even after increasing
+`http.postBuffer`/`http.lowSpeedTime` and even for much smaller unrelated
+binary test payloads -- pointing at something in GitHub's push-processing
+path for that content rather than plain client bandwidth. Things worth
+trying, roughly in order: `git config http.version HTTP/1.1` then retry;
+push over SSH instead of HTTPS; or, as done here, stop pushing large
+binaries as git blobs entirely and upload them as a GitHub Release asset
+(`gh release create <tag> <files...>`) instead, which uses a different
+upload path and sidestepped the issue completely. See
+`assets/` + the README's Demo section for how this project references the
+release-hosted files instead of a repo-relative path.
