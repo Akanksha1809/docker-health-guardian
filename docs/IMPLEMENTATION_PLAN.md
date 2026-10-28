@@ -108,3 +108,25 @@ See section 24 of the master prompt — tracked as a living checklist in this fi
          daemon (22s per test) instead of the fake; fixed by patching both
          bindings. 209 tests passing, 97% coverage on `src/` with `cli/`
          and `api/` no longer excluded from the number.
+- [x] Phase 11 (post-delivery) — closed the remaining honest gap: added 3
+      live (non-mocked) remediation e2e tests exercising real
+      `dry_run=false` restarts against real Docker:
+      `TestLiveRestartIsActuallyIssuedAndRecoveryVerified` (a genuine
+      restart that recovers, confirmed by polling the real container's
+      state/health, then resolves through the normal evaluator path on the
+      next cycle -- never marked resolved by the remediation engine itself),
+      `TestLiveRemediationFailureWhenHealthNeverRecovers` (a restart whose
+      container's healthcheck can never pass, correctly landing on
+      `REMEDIATION_FAILED`, never silently reported as fixed), and
+      `TestRestartLoopIsDeniedEvenWhenFullyArmed` (a crash-looping
+      container with remediation fully enabled and explicitly allowlisted
+      -- still never restarted by Guardian, proving the rule-level denial
+      holds independent of the global switch). All 3 run against the real
+      Colima daemon and clean up their own disposable containers.
+      Building the first of these surfaced one more real bug: the
+      evaluator's `unexpected_stop` rule had no clearing condition at
+      all -- once triggered, that incident could never auto-resolve, so
+      every later occurrence on that container would keep absorbing into
+      the same ancient incident instead of a fresh one ever being raised.
+      Fixed by clearing it once the container is observed running again;
+      covered by two new unit tests. tests/e2e is now 8 tests (up from 5).

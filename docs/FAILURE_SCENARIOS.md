@@ -148,4 +148,12 @@ Docker daemon:
 
 The live-Docker versions above (and `tests/e2e/`) exist to prove the same
 logic holds against a real daemon, not to replace the fast, deterministic
-suite.
+suite. Three scenarios additionally have a **live, non-mocked** proof
+against a real Docker daemon, with real `dry_run=false` restarts and real
+recovery polling (not a fake collector): `tests/e2e/test_live_docker.py`'s
+`TestLiveRestartIsActuallyIssuedAndRecoveryVerified` (scenario 9's success
+case -- an eligible container genuinely gets restarted and its recovery is
+genuinely verified), `TestLiveRemediationFailureWhenHealthNeverRecovers`
+(scenario 10), and `TestRestartLoopIsDeniedEvenWhenFullyArmed` (scenario 6,
+with remediation fully enabled and the container allowlisted, not just
+monitoring-only). Run with `GUARDIAN_RUN_E2E=1 pytest tests/e2e -q`.

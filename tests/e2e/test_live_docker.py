@@ -260,3 +260,210 @@ class TestDryRunNeverMutatesLiveContainer:
         assert started_at_before == started_at_after, "dry_run must never actually restart"
         attempts = db.list_remediation_attempts(container_name=name)
         assert any(a.outcome.value == "skipped" and a.dry_run for a in attempts)
+
+
+class TestLiveRestartIsActuallyIssuedAndRecoveryVerified:
+    """The remediation path with real Docker, real dry_run=false: a restart
+    actually happens, and recovery is verified against the container's real
+    state -- not assumed from the restart command's own success."""
+
+    def test_allowlisted_container_is_restarted_and_recovery_is_verified(
+        self, docker_client, cleanup_containers, db
+    ):
+        name = _unique_name()
+        # No healthcheck: once restarted, RUNNING alone counts as recovered.
+        # Exits on its own after 4s so the container is genuinely stopped
+        # (triggering a real unexpected_stop incident) before any
+        # remediation is attempted -- not a container we spin up already
+        # healthy and restart for no organic reason.
+        docker_client.containers.run(
+            "busybox:1.36",
+            name=name,
+            command="sh -c 'sleep 4; exit 1'",
+            detach=True,
+            labels={"guardian.e2e": "true"},
+        )
+        cleanup_containers.append(name)
+
+        collector = DockerCollector(DockerConfig(monitored_containers=[name]))
+        evaluator = HealthEvaluator(DetectionConfig())
+        incident_manager = IncidentManager(db)
+        remediation_engine = RemediationEngine(db)
+        cfg = RemediationConfig(
+            enabled=True,
+            dry_run=False,
+            restart_allowlist=[name],
+            cooldown_seconds=0,
+            max_actions_per_container=5,
+            recovery_grace_period_seconds=15,
+        )
+
+        incident_holder: dict[str, object] = {}
+
+        def wait_for_unexpected_stop_incident() -> bool:
+            snapshot = collector.get_single_snapshot(name)
+            if snapshot is None:
+                return False
+            triggered, _ = evaluator.evaluate(snapshot)
+            for match in triggered:
+                incident = incident_manager.process_triggered(match)
+                if match.rule_id == "unexpected_stop":
+                    incident_holder["incident"] = incident
+            return "incident" in incident_holder
+
+        assert _wait_until(wait_for_unexpected_stop_incident, timeout_seconds=30, interval=1.0)
+        incident = incident_holder["incident"]
+        started_at_before = docker_client.containers.get(name).attrs["State"]["StartedAt"]
+
+        attempt = remediation_engine.attempt_remediation(
+            incident, cfg, collector, incident_manager
+        )
+
+        assert attempt.outcome.value == "success"
+        assert attempt.recovery_verified is True
+        started_at_after = docker_client.containers.get(name).attrs["State"]["StartedAt"]
+        assert started_at_after != started_at_before, "Guardian must have actually restarted it"
+
+        fetched = db.get_incident(incident.incident_id)
+        assert fetched.state == IncidentState.VERIFYING, (
+            "the engine itself must never mark RESOLVED -- only a later "
+            "evaluator observation does"
+        )
+
+        # Closing the loop: the next real observation while the container is
+        # genuinely running again resolves the incident through the normal
+        # evaluator path, exactly as in production.
+        def observe_resolution() -> bool:
+            snapshot = collector.get_single_snapshot(name)
+            if snapshot is None or snapshot.state.value != "running":
+                return False
+            _, cleared = evaluator.evaluate(snapshot)
+            for rule_id in cleared:
+                incident_manager.process_cleared(name, rule_id)
+            resolved = db.get_incident(incident.incident_id)
+            return resolved.state == IncidentState.RESOLVED
+
+        assert _wait_until(observe_resolution, timeout_seconds=10, interval=0.5)
+
+
+class TestLiveRemediationFailureWhenHealthNeverRecovers:
+    """A restart that succeeds at the Docker-API level but whose container
+    never reports healthy must be recorded as failed, never as resolved."""
+
+    def test_restart_without_recovery_marks_remediation_failed(
+        self, docker_client, cleanup_containers, db
+    ):
+        name = _unique_name()
+        docker_client.containers.run(
+            "busybox:1.36",
+            name=name,
+            command="sh -c 'while true; do sleep 1; done'",
+            healthcheck={
+                "test": ["CMD", "sh", "-c", "exit 1"],  # always fails, restart can't fix this
+                "interval": 1_000_000_000,
+                "timeout": 1_000_000_000,
+                "retries": 1,
+                "start_period": 1_000_000_000,
+            },
+            detach=True,
+            labels={"guardian.e2e": "true"},
+        )
+        cleanup_containers.append(name)
+
+        collector = DockerCollector(DockerConfig(monitored_containers=[name]))
+        evaluator = HealthEvaluator(DetectionConfig())
+        incident_manager = IncidentManager(db)
+        remediation_engine = RemediationEngine(db)
+        cfg = RemediationConfig(
+            enabled=True,
+            dry_run=False,
+            restart_allowlist=[name],
+            cooldown_seconds=0,
+            max_actions_per_container=5,
+            # Shorter than this healthcheck can possibly report "healthy" --
+            # it never will, since the check itself always fails -- so this
+            # deterministically proves the failure path, not a flaky race.
+            recovery_grace_period_seconds=4,
+        )
+
+        incident_holder: dict[str, object] = {}
+
+        def wait_for_unhealthy_incident() -> bool:
+            snapshot = collector.get_single_snapshot(name)
+            if snapshot is None:
+                return False
+            triggered, _ = evaluator.evaluate(snapshot)
+            for match in triggered:
+                incident = incident_manager.process_triggered(match)
+                if match.rule_id == "health_unhealthy":
+                    incident_holder["incident"] = incident
+            return "incident" in incident_holder
+
+        assert _wait_until(wait_for_unhealthy_incident, timeout_seconds=30, interval=1.0)
+        incident = incident_holder["incident"]
+
+        attempt = remediation_engine.attempt_remediation(
+            incident, cfg, collector, incident_manager
+        )
+
+        assert attempt.outcome.value == "failed"
+        assert attempt.recovery_verified is False
+        fetched = db.get_incident(incident.incident_id)
+        assert fetched.state == IncidentState.REMEDIATION_FAILED
+
+
+class TestRestartLoopIsDeniedEvenWhenFullyArmed:
+    """restart_loop must stay undeniable even with remediation fully enabled
+    and the container explicitly allowlisted -- the rule itself, not just
+    the global monitoring-only switch, is what blocks it."""
+
+    def test_crash_looping_container_is_never_restarted_by_guardian(
+        self, docker_client, cleanup_containers, db
+    ):
+        name = _unique_name()
+        docker_client.containers.run(
+            "busybox:1.36",
+            name=name,
+            command="sh -c 'exit 1'",
+            restart_policy={"Name": "always"},
+            detach=True,
+            labels={"guardian.e2e": "true"},
+        )
+        cleanup_containers.append(name)
+
+        collector = DockerCollector(DockerConfig(monitored_containers=[name]))
+        evaluator = HealthEvaluator(DetectionConfig(restart_count_threshold=2))
+        incident_manager = IncidentManager(db)
+        remediation_engine = RemediationEngine(db)
+        cfg = RemediationConfig(
+            enabled=True,
+            dry_run=False,
+            restart_allowlist=[name],
+            cooldown_seconds=0,
+            max_actions_per_container=5,
+        )
+
+        def tick() -> None:
+            snapshot = collector.get_single_snapshot(name)
+            if snapshot is None:
+                return
+            triggered, _ = evaluator.evaluate(snapshot)
+            for match in triggered:
+                incident = incident_manager.process_triggered(match)
+                remediation_engine.attempt_remediation(incident, cfg, collector, incident_manager)
+
+        for _ in range(8):
+            tick()
+            time.sleep(1.5)
+
+        attempts = db.list_remediation_attempts(container_name=name)
+        restart_loop_incident_ids = {
+            i.incident_id
+            for i in db.list_incidents(container_name=name)
+            if i.rule_id == "restart_loop"
+        }
+        assert restart_loop_incident_ids, "expected a restart_loop incident to have been raised"
+        restart_loop_attempts = [a for a in attempts if a.incident_id in restart_loop_incident_ids]
+        assert restart_loop_attempts, "expected remediation to have been attempted and denied"
+        for attempt in restart_loop_attempts:
+            assert attempt.outcome.value == "denied"

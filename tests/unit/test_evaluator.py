@@ -76,6 +76,20 @@ class TestUnexpectedStop:
         triggered, _ = ev.evaluate(snap(state=ContainerState.EXITED, exit_code=0, t=5))
         assert "unexpected_stop" not in rule_ids(triggered)
 
+    def test_clears_once_running_again(self):
+        ev = HealthEvaluator(DetectionConfig())
+        ev.evaluate(snap(state=ContainerState.RUNNING, t=0))
+        ev.evaluate(snap(state=ContainerState.EXITED, exit_code=137, t=5))
+        _, cleared = ev.evaluate(snap(state=ContainerState.RUNNING, t=10))
+        assert "unexpected_stop" in cleared
+
+    def test_does_not_clear_while_still_stopped(self):
+        ev = HealthEvaluator(DetectionConfig())
+        ev.evaluate(snap(state=ContainerState.RUNNING, t=0))
+        ev.evaluate(snap(state=ContainerState.EXITED, exit_code=137, t=5))
+        _, cleared = ev.evaluate(snap(state=ContainerState.EXITED, exit_code=137, t=10))
+        assert "unexpected_stop" not in cleared
+
 
 class TestStoppedBeyondGrace:
     def test_does_not_fire_before_grace_period(self):

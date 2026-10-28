@@ -276,11 +276,16 @@ make lint
 ```
 
 **Actual results from this project's own development** (see
-`docs/IMPLEMENTATION_PLAN.md` for the full phase-by-phase log): 209
+`docs/IMPLEMENTATION_PLAN.md` for the full phase-by-phase log): 211
 unit/integration tests passing (including a full CLI suite covering exit
 codes and output for every command via Typer's `CliRunner`), 97% coverage
 on `src/` -- `cli/` and `api/` included, not excluded from the number --
-ruff clean, plus 5 e2e tests passing against a live Colima Docker daemon.
+ruff clean, plus 8 e2e tests passing against a live Colima Docker daemon,
+including real (non-mocked) restart-and-recovery-verification scenarios:
+a genuine restart that recovers, one that doesn't (correctly marked
+`REMEDIATION_FAILED`, never silently "fixed"), and proof that
+`restart_loop` stays denied even with remediation fully enabled and the
+container allowlisted.
 
 ## Troubleshooting
 

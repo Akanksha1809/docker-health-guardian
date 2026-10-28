@@ -82,6 +82,12 @@ class HealthEvaluator:
             cleared.append("health_unhealthy")
 
         # -- unexpected_stop (edge-triggered transition) --
+        # Clears once the container is confirmed running again -- the stop
+        # itself stays on record in the incident's event timeline, but an
+        # open incident here would otherwise never resolve (there is no
+        # other sustained condition to watch), permanently absorbing every
+        # later occurrence into one ever-growing incident instead of
+        # letting a genuinely new failure raise a fresh one.
         if (
             track.last_state == ContainerState.RUNNING
             and snapshot.state in (ContainerState.EXITED, ContainerState.DEAD)
@@ -94,6 +100,8 @@ class HealthEvaluator:
                     {"exit_code": snapshot.exit_code, "previous_state": "running"},
                 )
             )
+        elif snapshot.state == ContainerState.RUNNING:
+            cleared.append("unexpected_stop")
 
         # -- stopped_beyond_grace (sustained) --
         if snapshot.state in _STOPPED_STATES:
